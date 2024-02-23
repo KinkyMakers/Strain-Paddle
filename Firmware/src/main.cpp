@@ -13,7 +13,12 @@ int calibration_factor = 2500; //calibration factor for load cell
 bool run = false;
 
 
+
 void setup() {
+
+setCpuFrequencyMhz(80); //set the CPU frequency to 80MHz
+
+
 
 //initialize serial monitor
 Serial.begin(115200);
