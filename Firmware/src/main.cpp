@@ -35,7 +35,7 @@ delay(1000);
 
 for(int i = 0; i < 10; i++)
 {
-  Serial.println(scale.read_average(100));
+  Serial.println(scale.read_average(10));
   delay(500);
 }
 
@@ -47,7 +47,7 @@ delay(2000);
 
 LogDebug("HX711 initialized");
 
-long zero_factor = scale.read_average(100); //get the zero factor
+long zero_factor = scale.read_average(10); //get the zero factor
 Serial.println("Zero factor: " + String(zero_factor));
 
 
