@@ -63,11 +63,11 @@ Serial.println("Zero factor: " + String(zero_factor));
 void loop() {
   if(run){
   Serial.print("Reading: ");
-  Serial.print(scale.get_units(),1);
-  Serial.print(" lbs"); //Change this to kg and re-adjust the calibration factor if you follow SI units like a sane person
-  Serial.print(" calibration_factor: ");
-  Serial.print(calibration_factor);
-  Serial.println();
+  Serial.println(scale.read_average(5));
+  //Serial.print(" lbs"); //Change this to kg and re-adjust the calibration factor if you follow SI units like a sane person
+  //Serial.print(" calibration_factor: ");
+  //Serial.print(calibration_factor);
+  //Serial.println();
   };
 
   if(Serial.available())
