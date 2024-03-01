@@ -2,14 +2,18 @@
 #include <Arduino.h>
 #include <FastLED.h>  // LED library
 #include <HX711.h>    // load cell library
-#include <Wire.h>     // I2C library for accelerometer
+#include <Wire.h>     // I2C library
+#include <EEPROM.h> // include for reading/write to eeprom
+
+// EEProm address for calibration factor
+#define CALIBRATION_FACTOR_ADDRESS 0
 
 
 
 CRGB leds[1]; //LED strip object
 HX711 scale;  //load cell object
 
-int calibration_factor = 2500; //calibration factor for load cell 
+int calibration_factor = 250; //calibration factor for load cell 
 bool run = false;
 
 void led_from_strain(float strain)
@@ -91,6 +95,19 @@ void i2c_scanner() {
 
 void setup() {
 
+//setup the eeprom
+EEPROM.begin(512);
+
+//read the calibration factor from eeprom
+calibration_factor = EEPROM.read(CALIBRATION_FACTOR_ADDRESS);
+
+//if calibration factor is 0, set it to 25
+if(calibration_factor == 0)
+{
+  calibration_factor = 25;
+  EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+}
+
 // so the hx711 doesn't like the ESP32 at full speed, so we need to slow it down
 setCpuFrequencyMhz(80); //set the CPU frequency to 80MHz
 
@@ -157,13 +174,15 @@ void loop() {
   if(run){
 
   //read the load cell and accelerometer
-  float current_reading = (abs(scale.get_units(5))/1000);
+  float current_reading = (abs(scale.get_units(5))/calibration_factor);
+
+if(current_reading < .09){
+  scale.tare();
+  }
 
 
   Serial.print("Strain Guage: ");
   Serial.println(current_reading);
-  Serial.print("Accelerometer: ");
-  Serial.println(read_accel_z());
 
   //change the LED color based on the load cell reading
   led_from_strain(current_reading);
@@ -180,8 +199,7 @@ void loop() {
         scale.tare();
         break;
       case 'c':
-        LogStatus("Calibrate");
-        calibration_factor = Serial.parseInt();
+        LogStatus("Calibration Factor: " + String(calibration_factor));
         break;
       case 'r':
         LogDebug("Run: " + String(run));
@@ -189,11 +207,17 @@ void loop() {
         break;
       case 'a':
         LogStatus("Increase Calibration Factor");
-        calibration_factor += 1000;
+        calibration_factor += 1;
+        //write the calibration factor to eeprom
+        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+        EEPROM.commit();
         break;
       case 'z':
         LogStatus("Decrease Calibration Factor");
-        calibration_factor -= 1000;
+        calibration_factor -= 1;
+        //write the calibration factor to eeprom
+        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+        EEPROM.commit();
         break;
       case 's':
         i2c_scanner();   
