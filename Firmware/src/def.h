@@ -12,6 +12,7 @@
 #define g_SDA 26            //gyro sda pin
 #define g_INT 27            //gyro interrupt pin
 #define g_INT2 17           //gyro interrupt pin 2
+#define g_ADDR 0x19         //gyro i2c address
 
 
 //Kyle's Macros from OSSM + some updates

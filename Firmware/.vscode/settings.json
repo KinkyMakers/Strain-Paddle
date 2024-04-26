@@ -1,5 +1,6 @@
 {
     "files.associations": {
         "system_error": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/Users/jamescraig/Documents/GitHub/Strain-Paddle/Firmware/.pio/libdeps/esp32dev/FastLED"
 }
