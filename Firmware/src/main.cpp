@@ -1,17 +1,32 @@
+
+//   _________ __                .__      __________             .___  .___.__          
+//  /   _____//  |_____________  |__| ____\______   \_____     __| _/__| _/|  |   ____  
+//  \_____  \\   __\_  __ \__  \ |  |/    \|     ___/\__  \   / __ |/ __ | |  | _/ __ \ 
+//  /        \|  |  |  | \// __ \|  |   |  \    |     / __ \_/ /_/ / /_/ | |  |_\  ___/ 
+// /_______  /|__|  |__|  (____  /__|___|  /____|    (____  /\____ \____ | |____/\___  >
+//         \/                  \/        \/               \/      \/    \/           \/ 
+//
+//  By: KinkMakers.core()
+//  2024
+//  Version 1.0
+//
+
 #include "def.h"      // pin definitions and helpers
-#include <Arduino.h>
+#include <Arduino.h>  // Arduino library, some functions just make it easier to have this included
 #include <FastLED.h>  // LED library
 #include <HX711.h>    // load cell library
 #include <Wire.h>     // I2C library
-#include <EEPROM.h> // include for reading/write to eeprom
-#include <esp_now.h> // include for esp now
-#include <WiFi.h> // include for wifi
+#include <EEPROM.h>   // include for reading/write to eeprom
+#include <esp_now.h>  // include for esp now
+#include <WiFi.h>     // include for wifi
 
+/////////////////////////////////////////////
+// Setup Your Device here
+/////////////////////////////////////////////
 
+#define MyDeviceName "Ronald"   // Name of the device
+#define CALIBRATION_FACTOR_ADDRESS 0 // Address in EEPROM to store the calibration factor
 
-
-// EEProm address for calibration factor
-#define CALIBRATION_FACTOR_ADDRESS 0
 
 CRGB leds[1]; //LED strip object
 HX711 scale;  //load cell object
@@ -19,42 +34,37 @@ HX711 scale;  //load cell object
 int calibration_factor = 250; //calibration factor for load cell 
 bool run = false;
 
-
 /////////////////////////////////////////////
 // ESP NOW
 /////////////////////////////////////////////
-// REPLACE WITH YOUR RECEIVER MAC Address
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-// Structure example to send data
-// Must match the receiver structure
-typedef struct struct_message {
-  float peakValue;
-} struct_message;
+  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // using broadcast address to send the data to all peers
 
-// Create a struct_message called myData
-struct_message myData;
+  // Data Structure to send data
+  typedef struct struct_message {
+    float peakValue;
+    uint8_t macAddress[6];
+    char deviceName[20];
+  } struct_message;
 
-esp_now_peer_info_t peerInfo;
+  // Create a struct_message called myData
+  struct_message myData;
+  esp_now_peer_info_t peerInfo;
 
-// callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-}
+  // callback when data is sent
+  void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    Serial.print("\r\nLast Packet Send Status:\t");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  }
 
-  /////////////////////////////////////////////////
-  // Read the load cell
-  /////////////////////////////////////////////////
+/////////////////////////////////////////////////
+// Load Cell Functions
+/////////////////////////////////////////////////
 
 float readLoadCell() {
   float load = scale.get_units(5); // Get average of 5 readings
   return load;
 }
-
-  /////////////////////////////////////////////////
-  // make the loadcell reading light
-  /////////////////////////////////////////////////
 
 void led_from_strain(float strain)
   {
@@ -161,44 +171,38 @@ float calculateAverage() {
   // read from accelerometer
   /////////////////////////////////////////////////
 
-void readAccelData(int16_t *x, int16_t *y, int16_t *z) {
-  // Read STATUS register to check for data ready
-  Wire.beginTransmission(g_ADDR);
-  Wire.write(0x27); // STATUS register
-  if (Wire.endTransmission() != 0 || Wire.requestFrom(g_ADDR, 1) != 1) {
-    Serial.println("Error reading STATUS register.");
-    return;
-  }
+  void readAccelData(int16_t *x, int16_t *y, int16_t *z) {
+    // Read STATUS register to check for data ready
+    Wire.beginTransmission(g_ADDR);
+    Wire.write(0x27); // STATUS register
+    if (Wire.endTransmission() != 0 || Wire.requestFrom(g_ADDR, 1) != 1) {
+      Serial.println("Error reading STATUS register.");
+      return;
+    }
   
-  byte status = Wire.read();
-  if (!(status & 0x01)) { // Check if DRDY (data-ready) bit is set
-    Serial.println("Data not ready.");
-    return;
-  }
-  
-  // If DRDY bit is set, read accelerometer data
-  Wire.beginTransmission(g_ADDR);
-  Wire.write(0x28 | 0x80); // Set auto-increment and start at OUT_X_L
-  if (Wire.endTransmission(false) != 0) {
-    Serial.println("Error setting auto-increment address.");
-    return;
-  }
+    byte status = Wire.read();
+    
+    if (!(status & 0x01)) { // Check if DRDY (data-ready) bit is set
+      Serial.println("Data not ready.");
+      return;
+    }
+    
+    // If DRDY bit is set, read accelerometer data
+    Wire.beginTransmission(g_ADDR);
+    Wire.write(0x28 | 0x80); // Set auto-increment and start at OUT_X_L
+    if (Wire.endTransmission(false) != 0) {
+      Serial.println("Error setting auto-increment address.");
+      return;
+    }
 
-  Wire.requestFrom(g_ADDR, (uint8_t)6); 
-  while (Wire.available() < 6);
+    Wire.requestFrom(g_ADDR, (uint8_t)6); 
+    while (Wire.available() < 6);
+    
+    *x = Wire.read() | ((int16_t)Wire.read() << 8);
+    *y = Wire.read() | ((int16_t)Wire.read() << 8);
+    *z = Wire.read() | ((int16_t)Wire.read() << 8);
   
-  *x = Wire.read() | ((int16_t)Wire.read() << 8);
-  *y = Wire.read() | ((int16_t)Wire.read() << 8);
-  *z = Wire.read() | ((int16_t)Wire.read() << 8);
-  
-
 }
-
-
-
-  /////////////////////////////////////////////////
-  // setup the accelerometer
-  /////////////////////////////////////////////////
 
 void setupAccelerometer() {
   Wire.beginTransmission(g_ADDR);
@@ -207,11 +211,6 @@ void setupAccelerometer() {
   Wire.write(0b01010100); // This is 0x4A in hexadecimal
   Wire.endTransmission();
 }
-
-
-  /////////////////////////////////////////////////
-  // read the status register
-  /////////////////////////////////////////////////
 
 void readStatusRegister() {
   Wire.beginTransmission(g_ADDR);
@@ -247,6 +246,46 @@ void readStatusRegister() {
 }
 
 
+/////////////////////////////////////////////
+// Serial Response
+/////////////////////////////////////////////
+void serialResponse(){
+      char temp = Serial.read();
+    switch(temp)
+    {
+      case 't':
+        LogStatus("Tare");
+        scale.tare();
+        break;
+      case 'c':
+        LogStatus("Calibration Factor: " + String(calibration_factor));
+        break;
+      case 'r':
+        LogDebug("Run: " + String(run));
+        run = !run;
+        break;
+      case 'a':
+        LogStatus("Increase Calibration Factor");
+        calibration_factor += 1;
+        //write the calibration factor to eeprom
+        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+        EEPROM.commit();
+        break;
+      case 'z':
+        LogStatus("Decrease Calibration Factor");
+        calibration_factor -= 1;
+        //write the calibration factor to eeprom
+        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+        EEPROM.commit();
+        break;
+      case 's':
+        LogStatus("Read Status Register");
+        readStatusRegister();
+        break;
+
+
+    }
+}
 
 
 
@@ -353,72 +392,43 @@ void loop() {
 
   if(run){
 
-  //read the load cell and accelerometer
-  float current_reading = (abs(scale.get_units(2))/calibration_factor);
-  updateLastPeak(current_reading);
-  
+    //read the load cell and accelerometer
+    float current_reading = (abs(scale.get_units(2))/calibration_factor);
+    updateLastPeak(current_reading);
+    
+    Serial.print(">Strain Guage:");
+    Serial.println(current_reading);
+    Serial.print(">Peak:");
+    Serial.println(lastPEAK);
 
-  Serial.print(">Strain Guage:");
-  Serial.println(current_reading);
-  Serial.print(">Peak:");
-  Serial.println(lastPEAK);
-
-  //change the LED color based on the load cell reading
-  //led_from_strain(current_reading);
-
-  // advance colour rainbow on led strip to demonstrait program is stillrunning
-  static uint8_t hue = 0;
-  hue++;
-  leds[0] = CHSV(hue, 255, 255);
-  FastLED.show();
+    // read from the accelerometer  
+    int16_t x, y, z;
+    readAccelData(&x, &y, &z);
+    Serial.print(">X: ");
+    Serial.println(x);
+    Serial.print(">Y: ");
+    Serial.println(y);
+    Serial.print(">Z: ");
+    Serial.println(z);
 
 
+    //change the LED color based on the load cell reading
+    //led_from_strain(current_reading);
+
+    // advance colour rainbow on led strip to demonstrait program is stillrunning
+    static uint8_t hue = 0;
+    hue++;
+    leds[0] = CHSV(hue, 255, 255);
+    FastLED.show();
 
   }
 
 
+  // Before we go check for serial input and then deal with it
+  if(Serial.available()){ serialResponse();}
 
 
-
-  if(Serial.available())
-  {
-    char temp = Serial.read();
-    switch(temp)
-    {
-      case 't':
-        LogStatus("Tare");
-        scale.tare();
-        break;
-      case 'c':
-        LogStatus("Calibration Factor: " + String(calibration_factor));
-        break;
-      case 'r':
-        LogDebug("Run: " + String(run));
-        run = !run;
-        break;
-      case 'a':
-        LogStatus("Increase Calibration Factor");
-        calibration_factor += 1;
-        //write the calibration factor to eeprom
-        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
-        EEPROM.commit();
-        break;
-      case 'z':
-        LogStatus("Decrease Calibration Factor");
-        calibration_factor -= 1;
-        //write the calibration factor to eeprom
-        EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
-        EEPROM.commit();
-        break;
-      case 's':
-        LogStatus("Read Status Register");
-        readStatusRegister();
-        break;
-
-
-    }
-  }
-}
+} //Void Loop
 
 
 

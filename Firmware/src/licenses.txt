@@ -1,0 +1,22 @@
+
+###############
+Included Things
+###############
+
+
+##      Arduino.h       GNU Lesser General Public License       https://github.com/arduino/ArduinoCore-avr/blob/master/cores/arduino/Arduino.h
+##      FastLED.h       MIT License                             https://github.com/FastLED/FastLED
+##      HX711.h         MIT License                             https://github.com/bogde/HX711
+##      Wire.h          GNU Lesser General Public License       https://github.com/esp8266/Arduino/blob/master/libraries/Wire/Wire.h
+##      EEPROM.h        GNU Lesser General Public License       https://github.com/arduino/ArduinoCore-avr/blob/master/libraries/EEPROM/src/EEPROM.h
+##      esp_now.h       Apache-2.0                              https://github.com/espressif/esp-idf/blob/master/components/esp_wifi/include/esp_now.h
+##      WiFi.h          GNU Lesser General Public License       https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFi/src/WiFi.h
+
+
+
+#################
+Referenced Things
+#################
+
+##      ESP-NOW Random Nerd Tutorial                            https://randomnerdtutorials.com/esp-now-esp32-arduino-ide/
+##      Conversations with ChatGPT-4                            https://chat.openai.com/
