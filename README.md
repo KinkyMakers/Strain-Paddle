@@ -8,7 +8,7 @@ Using the smallest traces available from JLCPCB we embeded this pattern to be us
 
 
 
-![image](https://github.com/KinkyMakers/Strain-Paddle/assets/43324815/663478f0-607f-4204-a271-9c19f1f75880)
+![image](https://github.com/KinkyMakers/Strain-Paddle/assets/43324815/5794bffa-a632-4a42-a7ca-b0be7d107bb6)
 
 
 
