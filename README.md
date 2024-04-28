@@ -11,4 +11,11 @@ Using the smallest traces available from JLCPCB we embeded this pattern to be us
 ![image](https://github.com/KinkyMakers/Strain-Paddle/assets/43324815/5794bffa-a632-4a42-a7ca-b0be7d107bb6)
 
 
+# PCB Layout
+
+I am happy the general concept works, and that the paddle is responsive. There are likely a few things we will find need to be improved after the first batch are out in the wild.
+
+<img width="2445" alt="image" src="https://github.com/KinkyMakers/Strain-Paddle/assets/43324815/24f318b8-efdb-4feb-b0d7-b5b9a6543427">
+
+I'm really happy with two things on this board, the labelling - making the workshop easier. The second being the half-holes to reduce handle width, all though it was pointed out to me that quater holes may actually be possible and will reduce the width furthers. 
 
