@@ -4,12 +4,12 @@
 //  \_____  \\   __\_  __ \__  \ |  |/    \|     ___/\__  \   / __ |/ __ | |  | _/ __ \ 
 //  /        \|  |  |  | \// __ \|  |   |  \    |     / __ \_/ /_/ / /_/ | |  |_\  ___/ 
 // /_______  /|__|  |__|  (____  /__|___|  /____|    (____  /\____ \____ | |____/\___  >
-//         \/                  \/        \/               \/      \/    \/           \/ 
+//         \/                  \/        \/               \/      \/    \/      2024 \/ 
 //
 //  By: KinkMakers.core()
-//  2024
 //  Version 1.0
 //
+//  See Licenses.txt file for details of included items
 
 #include "def.h"      // pin definitions and helpers
 #include <Arduino.h>  // Arduino library, some functions just make it easier to have this included
@@ -24,15 +24,26 @@
 // Setup Your Device here
 /////////////////////////////////////////////
 
-#define MyDeviceName "Ronald"   // Name of the device
-#define CALIBRATION_FACTOR_ADDRESS 0 // Address in EEPROM to store the calibration factor
-
+#define MyDeviceName ""                 // Name of the device
+#define autoStart true                 // Start the serial dump automatically
+#define CALIBRATION_FACTOR_ADDRESS 0    // Address in EEPROM to store the calibration factor
 
 CRGB leds[1]; //LED strip object
 HX711 scale;  //load cell object
 
 int calibration_factor = 250; //calibration factor for load cell 
-bool run = false;
+bool run = false;             // run will be flagged in Setup() after the first tare if autoStart is true
+long espNowSendTime = 0;      // time to send the next ESP_NOW message
+long peakTime = 0;            // time to reset the peak value
+
+/////////////////////////////////////////////
+// After Now Function
+/////////////////////////////////////////////
+
+// if the current time in millis() is greater than the input return true
+bool afterNow(unsigned long time){
+  return millis() > time;
+}
 
 /////////////////////////////////////////////
 // ESP NOW
@@ -53,8 +64,10 @@ bool run = false;
 
   // callback when data is sent
   void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    // only log the send status if it failed
+    if (status != ESP_NOW_SEND_SUCCESS) {
+      LogError("Last Packet Send Status:\t" + String(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail"));
+    }
   }
 
 /////////////////////////////////////////////////
@@ -123,6 +136,12 @@ float calculateAverage() {
       if (currentReading > dynamicThreshold) {
           lastPEAK = currentReading; // Update last peak value
       }
+
+      // peak should reset after 5 seconds
+      if (afterNow(peakTime)) {
+          lastPEAK = 0.0;
+          peakTime = millis() + 5000;
+      }
   }
 
 
@@ -135,7 +154,7 @@ float calculateAverage() {
     byte error, address;
     int nDevices;
 
-    Serial.println("Scanning for I2C devices...");
+    LogDebug("Scanning for I2C devices...");
 
     nDevices = 0;
     for (address = 1; address < 127; address++) {
@@ -143,7 +162,7 @@ float calculateAverage() {
       error = Wire.endTransmission();
 
       if (error == 0) {
-        Serial.print("I2C device found at address 0x");
+        LogDebug("I2C device found at address 0x");
         if (address < 16) {
           Serial.print("0");
         }
@@ -152,7 +171,7 @@ float calculateAverage() {
         nDevices++;
       }
       else if (error == 4) {
-        Serial.print("Unknown error at address 0x");
+        LogError("Unknown error at address 0x");
         if (address < 16) {
           Serial.print("0");
         }
@@ -160,9 +179,9 @@ float calculateAverage() {
       }
     }
     if (nDevices == 0) {
-      Serial.println("No I2C devices found.");
+      LogError("No I2C devices found.");
     } else {
-      Serial.println("Scanning complete.");
+      LogDebug("Scanning complete.");
     }
   }
 
@@ -245,6 +264,30 @@ void readStatusRegister() {
   }
 }
 
+/////////////////////////////////////////////
+// Loading Serial Logo for Project
+/////////////////////////////////////////////
+
+void serialLogo(){
+  Serial.println(" ");
+  Serial.println(" ");
+  Serial.println("  _________ __                .__      __________             .___  .___.__          ");
+  Serial.println(" /   _____//  |_____________  |__| ____\\______   \\_____     __| _/__| _/|  |   ____  ");
+  Serial.println(" \\_____  \\\\   __\\_  __ \\__  \\ |  |/    \\|     ___/\\__  \\   / __ |/ __ | |  | _/ __ \\ ");
+  Serial.println(" /        \\|  |  |  | \\// __ \\|  |   |  \\    |     / __ \\_/ /_/ / /_/ | |  |_\\  ___/ ");
+  Serial.println("/_______  /|__|  |__|  (____  /__|___|  /____|    (____  /\\____ \\____ | |____/\\___  >");
+  Serial.println("        \\/                  \\/        \\/               \\/      \\/    \\/      2024 \\/ ");
+  Serial.println(" ");
+  Serial.println(" By: KinkMakers.core()");
+  Serial.println(" Version 1.0");
+  Serial.println(" ");
+  Serial.println(" See Licenses.txt file for details of included items");
+  Serial.println(" ");
+  Serial.println(" ");
+}
+
+
+
 
 /////////////////////////////////////////////
 // Serial Response
@@ -284,107 +327,111 @@ void serialResponse(){
         break;
 
 
-    }
+    } // switch(temp) 
 }
 
+
+/////////////////////////////////////////////
+// Setup
+/////////////////////////////////////////////
 
 
 void setup() {
 
-//setup the eeprom
-EEPROM.begin(512);
+  // so the hx711 doesn't like the ESP32 at full speed, we need to slow it down
+    setCpuFrequencyMhz(80); //set the CPU frequency to 80MHz
 
-//read the calibration factor from eeprom
-calibration_factor = EEPROM.read(CALIBRATION_FACTOR_ADDRESS);
+  //initialize serial monitor
+    Serial.begin(115200);
+    serialLogo();
 
-//if calibration factor is 0, set it to 25
-if(calibration_factor == 0)
-{
-  calibration_factor = 25;
-  EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
-}
+  //setup the eeprom
+    EEPROM.begin(512);
+  
+  // i2c stuff for accelerometer
 
-// so the hx711 doesn't like the ESP32 at full speed, so we need to slow it down
-setCpuFrequencyMhz(80); //set the CPU frequency to 80MHz
-
-//initialize serial monitor
-Serial.begin(115200);
-
-// i2c stuff for accelerometer
-
-  Wire.begin(g_SDA, g_SCL); // Initialize I2C with custom SDA and SCL pins
-  i2c_scanner(); // Call the I2C scanner function
-  setupAccelerometer();
+    Wire.begin(g_SDA, g_SCL); // Initialize I2C with custom SDA and SCL pins
+    i2c_scanner(); // Call the I2C scanner function
+    setupAccelerometer();
 
 
-//initialize LED strip
-FastLED.addLeds<WS2812B, led_pixel, GRB>(leds, 1);
-FastLED.setBrightness(15);
-FastLED.clear();
-leds[0] = CRGB::Red;
-FastLED.show();
+  //read the calibration factor from eeprom
+    calibration_factor = EEPROM.read(CALIBRATION_FACTOR_ADDRESS);
+
+  //if calibration factor is 0, set it to 25, 0 =  empty EEPROM
+    if(calibration_factor == 0)
+    {
+      calibration_factor = 25;
+      EEPROM.write(CALIBRATION_FACTOR_ADDRESS, calibration_factor);
+    }
+
+  //initialize LED strip
+    FastLED.addLeds<WS2812B, led_pixel, GRB>(leds, 1);
+    FastLED.setBrightness(255);
+    FastLED.clear();
+    leds[0] = CRGB::Red;
+    FastLED.show();
 
 
-//initialize the hx711
+  //initialize the hx711
 
-scale.begin(s_dout, s_clock);
-scale.set_gain(64);
+    scale.begin(s_dout, s_clock);
+    scale.set_gain(64);
 
-delay(1000);
+    delay(500);
 
-for(int i = 0; i < 10; i++)
-{
-  Serial.println(scale.read_average(10));
-  delay(100);
-}
+    scale.tare();
+    LogDebug("Scale tared, test reading: " + String(scale.get_units()));
 
-scale.tare();
+    delay(500);
 
-LogDebug("Scale tared, test reading: " + String(scale.get_units()));
+    LogDebug("HX711 initialized");
 
-delay(500);
+    long zero_factor = scale.read_average(10); //get the zero factor
+      LogDebug("Zero factor: " + String(zero_factor));
 
-LogDebug("HX711 initialized");
-
-long zero_factor = scale.read_average(10); //get the zero factor
-Serial.println("Zero factor: " + String(zero_factor));
-
-run = false; //start the loop
+  // run flag
+    run = autoStart;  // Look in the defines at the top of the file to set this
 
 
-FastLED.clear();
-leds[0] = CRGB::Yellow;
-FastLED.show();
+  // get that LED showing something 
+    FastLED.clear();
+    leds[0] = CRGB::Yellow;
+    FastLED.show();
 
 
-// ESPnow setup
-  WiFi.mode(WIFI_STA);
+  // ESPnow setup
+    WiFi.mode(WIFI_STA);
+    LogDebug("ESP-Now address: " + WiFi.macAddress());
 
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
+    if (esp_now_init() != ESP_OK) {
+      LogError("Error initializing ESP-NOW");
+      return;
+    } else {
+      LogDebug("ESP-NOW initialized");
+    }
 
-  esp_now_register_send_cb(OnDataSent);
+    esp_now_register_send_cb(OnDataSent);
+      LogDebug("Registering ESP-NOW send callback");
+
 
   // Register peer
-  esp_now_peer_info_t peerInfo;
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
+  
   // Add peer        
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    return;
-  }
-  Serial.println("ESP-NOW setup complete");
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      LogError("Failed to add peer");
+      return;
+    }
+    LogDebug("ESP-NOW setup complete");
 
-  FastLED.clear();
-  leds[0] = CRGB::Green;
-  FastLED.show();
+    FastLED.clear();
+    leds[0] = CRGB::Green;
+    FastLED.show();
 
-}
+} //Void Setup
 
 
 
@@ -421,11 +468,35 @@ void loop() {
     leds[0] = CHSV(hue, 255, 255);
     FastLED.show();
 
-  }
+  } // if(run)
 
 
   // Before we go check for serial input and then deal with it
   if(Serial.available()){ serialResponse();}
+
+
+
+
+
+  if(afterNow(espNowSendTime)){
+    // Send every 250ms + a random amount of time to avoid collisions
+      espNowSendTime = millis() + 250 + random(0,50); 
+
+    // build the ESP_NOW message 
+      myData.peakValue = lastPEAK;
+      memcpy(myData.macAddress, WiFi.macAddress().c_str(), 6);
+      memcpy(myData.deviceName, MyDeviceName, sizeof(MyDeviceName));
+
+    // Send message via ESP-NOW
+      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+      if (result == ESP_OK) {
+        // LogDebug("Sent data via ESP-NOW");
+      } else {
+        LogError("Error sending data via ESP-NOW");
+      }
+  }// if(afterNow(espNowSendTime))
+
+
 
 
 } //Void Loop

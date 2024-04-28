@@ -18,5 +18,23 @@ Included Things
 Referenced Things
 #################
 
-##      ESP-NOW Random Nerd Tutorial                            https://randomnerdtutorials.com/esp-now-esp32-arduino-ide/
+##      ESP-NOW Random Nerd Tutorial (below)                    https://randomnerdtutorials.com/esp-now-esp32-arduino-ide/
 ##      Conversations with ChatGPT-4                            https://chat.openai.com/
+##      LogDebug() from Kyle's OSSM Code    
+
+
+
+################
+ESP-Now Tutorial
+################
+
+/*
+  Rui Santos
+  Complete project details at https://RandomNerdTutorials.com/esp-now-esp32-arduino-ide/
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files.
+  
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+*/
