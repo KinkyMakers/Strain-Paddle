@@ -19,3 +19,9 @@ I am happy the general concept works, and that the paddle is responsive. There a
 
 I'm really happy with two things on this board, the labelling - making the workshop easier. The second being the half-holes to reduce handle width, all though it was pointed out to me that quater holes may actually be possible and will reduce the width furthers. 
 
+
+# Accelerometer
+
+<img width="770" alt="image" src="https://github.com/KinkyMakers/Strain-Paddle/assets/43324815/2d5982e9-ed84-4444-b047-86c81b25a4ad">
+
+If we're reading the force with the strain gauge, why bother with the accelerometer? Well a) it's a backup incase those readings are better b) it was suggested that with some sensor fusion and measurments of the mass of the paddle we can get some really accurate readings on total energy transfered. I'm not the maths person, but I am all for more options!
