@@ -24,7 +24,7 @@
 // Setup Your Device here
 /////////////////////////////////////////////
 
-#define MyDeviceName ""                 // Name of the device
+#define MyDeviceName "James 'Fucking' Craig"                 // Name of the device
 #define autoStart true                 // Start the serial dump automatically
 #define CALIBRATION_FACTOR_ADDRESS 0    // Address in EEPROM to store the calibration factor
 
@@ -367,7 +367,7 @@ void setup() {
 
   //initialize LED strip
     FastLED.addLeds<WS2812B, led_pixel, GRB>(leds, 1);
-    FastLED.setBrightness(255);
+    FastLED.setBrightness(15);
     FastLED.clear();
     leds[0] = CRGB::Red;
     FastLED.show();
