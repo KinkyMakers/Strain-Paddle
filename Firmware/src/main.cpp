@@ -24,7 +24,7 @@
 // Setup Your Device here
 /////////////////////////////////////////////
 
-#define MyDeviceName "James 'Fucking' Craig"                 // Name of the device
+#define MyDeviceName "James 'Fucking' Holden"                 // Name of the device
 #define autoStart true                 // Start the serial dump automatically
 #define CALIBRATION_FACTOR_ADDRESS 0    // Address in EEPROM to store the calibration factor
 
