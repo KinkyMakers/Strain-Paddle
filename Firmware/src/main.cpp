@@ -1,4 +1,3 @@
-
 //   _________ __                .__      __________             .___  .___.__          
 //  /   _____//  |_____________  |__| ____\______   \_____     __| _/__| _/|  |   ____  
 //  \_____  \\   __\_  __ \__  \ |  |/    \|     ___/\__  \   / __ |/ __ | |  | _/ __ \ 
@@ -19,6 +18,7 @@
 #include <EEPROM.h>   // include for reading/write to eeprom
 #include <esp_now.h>  // include for esp now
 #include <WiFi.h>     // include for wifi
+#include <CircularBuffer.h> // include for circular buffer
 
 /////////////////////////////////////////////
 // Setup Your Device here
@@ -35,6 +35,7 @@ int calibration_factor = 250; //calibration factor for load cell
 bool run = false;             // run will be flagged in Setup() after the first tare if autoStart is true
 long espNowSendTime = 0;      // time to send the next ESP_NOW message
 long peakTime = 0;            // time to reset the peak value
+float current_reading = 0;
 
 /////////////////////////////////////////////
 // After Now Function
@@ -57,9 +58,16 @@ bool afterNow(unsigned long time){
     uint8_t macAddress[6];
     char deviceName[20];
   } struct_message;
+  
+  typedef struct sex_struct {
+    int passcode;
+    char data_name[20];
+    float data;
+    char data_unit[10];
+  } sex_struct;
 
   // Create a struct_message called myData
-  struct_message myData;
+  sex_struct myData;
   esp_now_peer_info_t peerInfo;
 
   // callback when data is sent
@@ -102,125 +110,140 @@ void led_from_strain(float strain)
   /////////////////////////////////////////////////
 
   float lastPEAK = 0.0; // Global variable to store the last peak
+  unsigned long lastPeakTime = 0; // Time when the last peak was detected
+  const unsigned long PEAK_HOLD_TIME = 6000; // Hold peak for 5 seconds
   const int maxReadings = 20; // Maximum number of readings for noise floor calculation
-  float readings[maxReadings]; // Array to store recent readings
-  int readingsIndex = 0; // Current index in the readings array
-  bool readingsFilled = false; // Flag to check if the readings array has been filled
+  CircularBuffer<float, maxReadings> readings; // Circular buffer to store recent readings
+  float lastReading = 0.0; // Store the last reading for trend detection
+
+  // High-pass filter variables
+  float alpha = 0.3; // Filter coefficient (0.0 to 1.0)
+  float lastFilteredValue = 0.0; // Last filtered value
+  float lastRawValue = 0.0; // Last raw value
+
+// Function to apply high-pass filter
+float highPassFilter(float input) {
+    // First order high-pass filter
+    float filtered = alpha * (lastFilteredValue + input - lastRawValue);
+    lastFilteredValue = filtered;
+    lastRawValue = input;
+    return filtered;
+}
 
 // Function to calculate the average of the readings array
 float calculateAverage() {
     float sum = 0.0;
-    int count = readingsFilled ? maxReadings : readingsIndex;
+    int count = readings.size();
     for (int i = 0; i < count; i++) {
         sum += readings[i];
     }
     return count > 0 ? sum / count : 0.0;
 }
 
-  // Function to update the last peak value
-  void updateLastPeak(float currentReading) {
-      // Insert current reading into the circular buffer
-      readings[readingsIndex++] = currentReading;
-      if (readingsIndex >= maxReadings) {
-          readingsIndex = 0;
-          readingsFilled = true;
-      }
+// Function to update the last peak value
+void updateLastPeak(float currentReading) {
+    // Add reading to the circular buffer
+    readings.push(currentReading);
 
-      // Calculate noise floor as the average of recent readings
-      float noiseFloor = calculateAverage();
+    // Calculate noise floor as the average of recent readings
+    float noiseFloor = calculateAverage();
 
-      // Set a dynamic threshold, adjust the multiplier as needed
-      float dynamicThreshold = noiseFloor * 1.5; // Example: 50% above the noise floor
+    // Set a dynamic threshold, adjust the multiplier as needed
+    float dynamicThreshold = noiseFloor * 1.1; // 10% above the noise floor
 
-      // Check if current reading is a peak
-      if (currentReading > dynamicThreshold) {
-          lastPEAK = currentReading; // Update last peak value
-      }
-
-      // peak should reset after 5 seconds
-      if (afterNow(peakTime)) {
-          lastPEAK = 0.0;
-          peakTime = millis() + 5000;
-      }
-  }
-
-
-  /////////////////////////////////////////////////
-  // i2c Scanner
-  /////////////////////////////////////////////////
-
-
-  void i2c_scanner() {
-    byte error, address;
-    int nDevices;
-
-    LogDebug("Scanning for I2C devices...");
-
-    nDevices = 0;
-    for (address = 1; address < 127; address++) {
-      Wire.beginTransmission(address);
-      error = Wire.endTransmission();
-
-      if (error == 0) {
-        LogDebug("I2C device found at address 0x");
-        if (address < 16) {
-          Serial.print("0");
+    // Check if current reading is a peak
+    if (currentReading > dynamicThreshold) {
+        // Detect if we're at a peak by checking if the current reading is higher than the last
+        // and if we're above the threshold
+        if (currentReading > lastReading && currentReading > lastPEAK) {
+            lastPEAK = currentReading;
+            lastPeakTime = millis();
         }
-        Serial.print(address, HEX);
-        Serial.println(" !");
-        nDevices++;
-      }
-      else if (error == 4) {
-        LogError("Unknown error at address 0x");
-        if (address < 16) {
-          Serial.print("0");
-        }
-        Serial.println(address, HEX);
-      }
     }
-    if (nDevices == 0) {
-      LogError("No I2C devices found.");
-    } else {
-      LogDebug("Scanning complete.");
+
+    // Store current reading for next comparison
+    lastReading = currentReading;
+
+    // Reset peak if it's older than PEAK_HOLD_TIME
+    if (millis() - lastPeakTime > PEAK_HOLD_TIME) {
+        lastPEAK = 0.0;
+    }
+}
+
+/////////////////////////////////////////////
+// i2c Scanner
+/////////////////////////////////////////////
+
+void i2c_scanner() {
+  byte error, address;
+  int nDevices;
+
+  LogDebug("Scanning for I2C devices...");
+
+  nDevices = 0;
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0) {
+      LogDebug("I2C device found at address 0x");
+      if (address < 16) {
+        Serial.print("0");
+      }
+      Serial.print(address, HEX);
+      Serial.println(" !");
+      nDevices++;
+    }
+    else if (error == 4) {
+      LogError("Unknown error at address 0x");
+      if (address < 16) {
+        Serial.print("0");
+      }
+      Serial.println(address, HEX);
     }
   }
+  if (nDevices == 0) {
+    LogError("No I2C devices found.");
+  } else {
+    LogDebug("Scanning complete.");
+  }
+}
 
+/////////////////////////////////////////////
+// read from accelerometer
+/////////////////////////////////////////////
 
-  /////////////////////////////////////////////////
-  // read from accelerometer
-  /////////////////////////////////////////////////
+void readAccelData(int16_t *x, int16_t *y, int16_t *z) {
+  // Read STATUS register to check for data ready
+  Wire.beginTransmission(g_ADDR);
+  Wire.write(0x27); // STATUS register
+  if (Wire.endTransmission() != 0 || Wire.requestFrom(g_ADDR, 1) != 1) {
+    Serial.println("Error reading STATUS register.");
+    return;
+  }
 
-  void readAccelData(int16_t *x, int16_t *y, int16_t *z) {
-    // Read STATUS register to check for data ready
-    Wire.beginTransmission(g_ADDR);
-    Wire.write(0x27); // STATUS register
-    if (Wire.endTransmission() != 0 || Wire.requestFrom(g_ADDR, 1) != 1) {
-      Serial.println("Error reading STATUS register.");
-      return;
-    }
+  byte status = Wire.read();
   
-    byte status = Wire.read();
-    
-    if (!(status & 0x01)) { // Check if DRDY (data-ready) bit is set
-      Serial.println("Data not ready.");
-      return;
-    }
-    
-    // If DRDY bit is set, read accelerometer data
-    Wire.beginTransmission(g_ADDR);
-    Wire.write(0x28 | 0x80); // Set auto-increment and start at OUT_X_L
-    if (Wire.endTransmission(false) != 0) {
-      Serial.println("Error setting auto-increment address.");
-      return;
-    }
-
-    Wire.requestFrom(g_ADDR, (uint8_t)6); 
-    while (Wire.available() < 6);
-    
-    *x = Wire.read() | ((int16_t)Wire.read() << 8);
-    *y = Wire.read() | ((int16_t)Wire.read() << 8);
-    *z = Wire.read() | ((int16_t)Wire.read() << 8);
+  if (!(status & 0x01)) { // Check if DRDY (data-ready) bit is set
+    Serial.println("Data not ready.");
+    return;
+  }
   
+  // If DRDY bit is set, read accelerometer data
+  Wire.beginTransmission(g_ADDR);
+  Wire.write(0x28 | 0x80); // Set auto-increment and start at OUT_X_L
+  if (Wire.endTransmission(false) != 0) {
+    Serial.println("Error setting auto-increment address.");
+    return;
+  }
+
+  Wire.requestFrom(g_ADDR, (uint8_t)6); 
+  while (Wire.available() < 6);
+  
+  *x = Wire.read() | ((int16_t)Wire.read() << 8);
+  *y = Wire.read() | ((int16_t)Wire.read() << 8);
+  *z = Wire.read() | ((int16_t)Wire.read() << 8);
+
 }
 
 void setupAccelerometer() {
@@ -286,9 +309,6 @@ void serialLogo(){
   Serial.println(" ");
 }
 
-
-
-
 /////////////////////////////////////////////
 // Serial Response
 /////////////////////////////////////////////
@@ -330,11 +350,9 @@ void serialResponse(){
     } // switch(temp) 
 }
 
-
 /////////////////////////////////////////////
 // Setup
 /////////////////////////////////////////////
-
 
 void setup() {
 
@@ -433,14 +451,13 @@ void setup() {
 
 } //Void Setup
 
-
-
 void loop() {
 
   if(run){
 
     //read the load cell and accelerometer
-    float current_reading = (abs(scale.get_units(2))/calibration_factor);
+    float raw_reading = (abs(scale.get_units(2))/calibration_factor);
+    current_reading = highPassFilter(raw_reading); // Apply high-pass filter to all readings
     updateLastPeak(current_reading);
     
     Serial.print(">Strain Guage:");
@@ -450,14 +467,13 @@ void loop() {
 
     // read from the accelerometer  
     int16_t x, y, z;
-    readAccelData(&x, &y, &z);
-    Serial.print(">X: ");
-    Serial.println(x);
-    Serial.print(">Y: ");
-    Serial.println(y);
-    Serial.print(">Z: ");
-    Serial.println(z);
-
+    // readAccelData(&x, &y, &z);
+    // Serial.print(">X: ");
+    // Serial.println(x);
+    // Serial.print(">Y: ");
+    // Serial.println(y);
+    // Serial.print(">Z: ");
+    // Serial.println(z);
 
     //change the LED color based on the load cell reading
     //led_from_strain(current_reading);
@@ -480,20 +496,22 @@ void loop() {
 
   if(afterNow(espNowSendTime)){
     // Send every 250ms + a random amount of time to avoid collisions
-      espNowSendTime = millis() + 250 + random(0,50); 
+    espNowSendTime = millis() + 3000;
 
     // build the ESP_NOW message 
-      myData.peakValue = lastPEAK;
-      memcpy(myData.macAddress, WiFi.macAddress().c_str(), 6);
-      memcpy(myData.deviceName, MyDeviceName, sizeof(MyDeviceName));
+    myData.passcode = 2024;  // Direct assignment for int
+    strncpy(myData.data_name, "Strain", sizeof(myData.data_name) - 1);  // Safe string copy
+    myData.data = lastPEAK;  // Direct assignment for float
+    // myData.data = current_reading;  // Direct assignment for float
+    strncpy(myData.data_unit, "Hurt (Newtons)", sizeof(myData.data_unit) - 1);  // Safe string copy
 
     // Send message via ESP-NOW
-      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-      if (result == ESP_OK) {
-        // LogDebug("Sent data via ESP-NOW");
-      } else {
-        LogError("Error sending data via ESP-NOW");
-      }
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+    if (result == ESP_OK) {
+      // LogDebug("Sent data via ESP-NOW");
+    } else {
+      LogError("Error sending data via ESP-NOW");
+    }
   }// if(afterNow(espNowSendTime))
 
 
